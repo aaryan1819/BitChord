@@ -213,7 +213,7 @@ object WebDavClient {
             }
         }
 
-    private fun propfind(dirUrl: String, username: String, password: String): Result<List<Entry>> {
+    fun propfind(dirUrl: String, username: String, password: String): Result<List<Entry>> {
         return runCatching {
             val request = propfindRequest(dirUrl, depth = "1", username, password)
             Http.client.newCall(request).execute().use { response ->

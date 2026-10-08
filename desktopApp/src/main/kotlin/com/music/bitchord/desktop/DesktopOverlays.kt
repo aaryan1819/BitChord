@@ -40,6 +40,7 @@ internal class DesktopOverlays {
     var lastfmLogin by mutableStateOf(false)
     var listenBrainzToken by mutableStateOf(false)
     var discordToken by mutableStateOf(false)
+    var webdavSync by mutableStateOf(false)
     var accounts by mutableStateOf(false)
     var signIn by mutableStateOf(false)
 

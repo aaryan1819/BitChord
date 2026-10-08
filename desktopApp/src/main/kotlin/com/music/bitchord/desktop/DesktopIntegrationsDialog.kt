@@ -56,6 +56,7 @@ internal fun DesktopIntegrationsDialog(
     onOpenLastfm: () -> Unit,
     onOpenListenBrainz: () -> Unit,
     onOpenDiscordToken: () -> Unit,
+    onOpenWebDav: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     var choosing by remember { mutableStateOf<DiscordChoice?>(null) }
@@ -74,6 +75,7 @@ internal fun DesktopIntegrationsDialog(
             )
             DiscordSection(song, onOpenDiscordToken, onChoose = { choosing = it }, onEdit = { editing = it })
             ScrobblingSection(onOpenLastfm, onOpenListenBrainz)
+            WebDavSection(onOpenWebDav)
         }
         DesktopCardRule()
         Row(
@@ -398,6 +400,24 @@ private fun ScrobblingSection(onOpenLastfm: () -> Unit, onOpenListenBrainz: () -
                 26,
             ) { DesktopScrobbleSettings.setDelaySeconds(it.roundToInt()) }
         }
+    }
+}
+
+@Composable
+private fun WebDavSection(onOpenWebDav: () -> Unit) {
+    val url by DesktopStatsSettings.webdavUrl.collectAsState()
+
+    PanelGroup(
+        header = "WebDAV Sync",
+        footer = "Sync listening stats using a WebDAV server.",
+    ) {
+        PanelSwitchRow(
+            title = "WebDAV",
+            subtitle = if (url.isNotBlank()) "Connected to $url" else "Configure WebDAV server",
+            checked = url.isNotBlank(),
+            onCheckedChange = { if (it) onOpenWebDav() else DesktopStatsSettings.disableWebdav() },
+            onClick = onOpenWebDav,
+        )
     }
 }
 

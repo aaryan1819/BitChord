@@ -79,7 +79,7 @@ object WebDavConfig {
         val decoded = runCatching {
             java.net.URLDecoder.decode(fileUrl.substringAfterLast('/'), "UTF-8")
         }.getOrDefault(fileUrl.substringAfterLast('/'))
-        return com.music.bitchord.data.remote.RemoteSong.build(
+        return com.music.bitchord.data.model.RemoteSong.build(
             videoId = idFor(fileUrl),
             streamUrl = fileUrl,
             fileName = decoded,

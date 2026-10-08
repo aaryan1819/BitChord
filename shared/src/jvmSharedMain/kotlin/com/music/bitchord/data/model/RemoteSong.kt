@@ -1,4 +1,4 @@
-package com.music.bitchord.data.remote
+package com.music.bitchord.data.model
 
 import com.music.bitchord.data.model.PlaybackSourceType
 import com.music.bitchord.data.model.Song

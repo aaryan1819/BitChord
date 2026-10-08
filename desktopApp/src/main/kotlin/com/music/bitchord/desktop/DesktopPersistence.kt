@@ -200,6 +200,15 @@ class DesktopPersistence {
     fun saveString(key: String, value: String) =
         DesktopPreferenceChunks.write(preferences, key, value)
 
+    fun webdavUrl(): String = string("webdav_url")
+    fun saveWebdavUrl(value: String) = saveString("webdav_url", value)
+    
+    fun webdavUsername(): String = string("webdav_username")
+    fun saveWebdavUsername(value: String) = saveString("webdav_username", value)
+    
+    fun webdavPassword(): String = string("webdav_password")
+    fun saveWebdavPassword(value: String) = saveString("webdav_password", value)
+
     /** A configured module index, when one is still set up. */
     fun moduleIndexUrl(): String =
         sourceConfigs().firstOrNull { it.kind == DesktopSourceKind.CUSTOM_MODULE }?.baseUrl.orEmpty()

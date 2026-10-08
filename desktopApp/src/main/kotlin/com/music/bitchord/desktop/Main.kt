@@ -8,6 +8,7 @@ import com.music.bitchord.data.innertube.InnerTubeXResolver
 import com.music.bitchord.data.innertube.StreamResolver
 import com.music.bitchord.data.innertube.potoken.PoTokenGenerator
 import com.music.bitchord.data.lyrics.LyricsTranslation
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -54,6 +55,20 @@ fun main() {
     )
     // The public "apps open right now" count; see Presence.
     DesktopPresence.install()
+    
+    val persistence = DesktopPersistence()
+    val webdavUrl = persistence.webdavUrl()
+    if (webdavUrl.isNotBlank()) {
+        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            com.music.bitchord.data.stats.StatsSyncManager.sync(
+                localDirectory = java.io.File(System.getProperty("user.home"), ".bitchord/listening"),
+                webDavUrl = webdavUrl,
+                username = persistence.webdavUsername(),
+                password = persistence.webdavPassword()
+            )
+        }
+    }
+    
     desktopMain()
 }
 

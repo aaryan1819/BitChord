@@ -108,6 +108,57 @@ internal fun DesktopLastfmLoginDialog(onDismiss: () -> Unit) {
     }
 }
 
+@Composable
+internal fun DesktopWebDavDialog(onDismiss: () -> Unit) {
+    val persistence = remember { DesktopPersistence() }
+    var url by remember { mutableStateOf(persistence.webdavUrl()) }
+    var username by remember { mutableStateOf(persistence.webdavUsername()) }
+    var password by remember { mutableStateOf(persistence.webdavPassword()) }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+
+    fun save() {
+        DesktopStatsSettings.saveWebdav(url.trim(), username.trim(), password)
+        onDismiss()
+    }
+
+    DesktopDialogPanel(onDismiss = onDismiss, maxWidth = 380) {
+        DialogHeading(
+            title = DesktopStrings["webdav_sync", "WebDAV Sync"],
+            message = "Sync your listening stats across devices using a WebDAV server.",
+        )
+        DialogField(
+            value = url,
+            onValueChange = { url = it },
+            placeholder = "WebDAV URL",
+            imeAction = ImeAction.Next,
+            modifier = Modifier.focusRequester(focus),
+        )
+        Spacer(Modifier.height(8.dp))
+        DialogField(
+            value = username,
+            onValueChange = { username = it },
+            placeholder = "Username",
+            imeAction = ImeAction.Next,
+        )
+        Spacer(Modifier.height(8.dp))
+        DialogField(
+            value = password,
+            onValueChange = { password = it },
+            placeholder = "Password",
+            isPassword = true,
+            onSubmit = ::save,
+        )
+        DialogActions(
+            confirm = "Save",
+            confirmEnabled = true,
+            busy = false,
+            onConfirm = ::save,
+            onDismiss = onDismiss,
+        )
+    }
+}
+
 /**
  * The `sp_dc` cookie Spotify Canvas needs.
  *

@@ -2915,7 +2915,7 @@ fun BitChordDesktopApp() {
                             // A page of Settings steps back the way the back button does, unless
                             // one of its prompts is up over it.
                             overlays.settingsPage != null &&
-                                !overlays.lastfmLogin && !overlays.listenBrainzToken && !overlays.discordToken -> {
+                                !overlays.lastfmLogin && !overlays.listenBrainzToken && !overlays.discordToken && !overlays.webdavSync -> {
                                 goBack()
                                 true
                             }
@@ -3331,6 +3331,9 @@ fun BitChordDesktopApp() {
                     if (overlays.discordToken) {
                         DesktopDiscordTokenDialog(onDismiss = { overlays.discordToken = false })
                     }
+                    if (overlays.webdavSync) {
+                        DesktopWebDavDialog(onDismiss = { overlays.webdavSync = false })
+                    }
                     if (overlays.listenTogether) {
                         DesktopListenTogetherDialog(
                             autoplayEnabled = autoplay,
@@ -3634,6 +3637,7 @@ fun BitChordDesktopApp() {
                                     onOpenLastfm = { overlays.lastfmLogin = true },
                                     onOpenListenBrainz = { overlays.listenBrainzToken = true },
                                     onOpenDiscordToken = { overlays.discordToken = true },
+                                    onOpenWebDav = { overlays.webdavSync = true },
                                     onDismiss = ::goBack,
                                 )
                                 DesktopSettingsPage.LICENSES -> DesktopLicensesPage(onDismiss = ::goBack)

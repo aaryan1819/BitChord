@@ -1,6 +1,11 @@
 package com.music.bitchord.desktop
 
 import com.music.bitchord.data.model.Song
+import com.music.bitchord.data.stats.StoredBucket
+import com.music.bitchord.data.stats.TrackEntry
+import com.music.bitchord.data.stats.NameEntry
+import kotlinx.serialization.json.Json
+import java.io.File
 import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.time.LocalDate
@@ -80,6 +85,16 @@ object DesktopListeningStats {
 
     private val preferences: Preferences = Preferences.userRoot().node("com.music.bitchord.desktop.stats")
     private val lock = Any()
+    
+    private val directory by lazy {
+        File(System.getProperty("user.home"), ".bitchord/listening").apply { mkdirs() }
+    }
+    
+    private val json = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+        prettyPrint = true
+    }
 
     /** A month's listening. */
     internal data class Bucket(
@@ -209,24 +224,47 @@ object DesktopListeningStats {
     // ── Storage ──────────────────────────────────────────────────────────
 
     private fun read(): List<Bucket> {
-        val stored = DesktopPreferenceChunks.read(preferences, KEY_BUCKETS).orEmpty()
-        val buckets = stored.lineSequence()
-            .filter(String::isNotBlank)
-            .mapNotNull(::decodeBucketLine)
-            .fold(LinkedHashMap<String, Bucket>()) { acc, (month, line) ->
-                acc.getOrPut(month) { Bucket(month) }.also { applyLine(it, line) }
-                acc
+        val files = directory.listFiles { _, name -> name.endsWith(".json") } ?: emptyArray()
+        val buckets = files.mapNotNull { file ->
+            runCatching {
+                val stored = json.decodeFromString(StoredBucket.serializer(), file.readText())
+                val bucket = Bucket(stored.month)
+                stored.tracks.forEach { track ->
+                    bucket.tracks[track.id] = DesktopReplayEntry(
+                        song = Song(
+                            videoId = track.id,
+                            title = track.title,
+                            artist = track.artist,
+                            albumName = track.album,
+                            albumId = track.albumId,
+                            artistId = track.artistId,
+                            thumbnailUrl = track.art
+                        ),
+                        listenedMs = track.ms,
+                        plays = track.plays
+                    )
+                }
+                stored.hours.forEachIndexed { i, ms ->
+                    if (i < bucket.hours.size) bucket.hours[i] = ms
+                }
+                stored.days.forEach { (d, ms) ->
+                    val dayStr = "${stored.month}-%02d".format(d)
+                    bucket.days[dayStr] = ms
+                }
+                bucket
+            }.getOrNull()
+        }.toMutableList()
+
+        if (buckets.isEmpty()) {
+            val legacy = migrateLegacy()
+            if (legacy.isNotEmpty()) {
+                write(legacy)
+                buckets.addAll(legacy)
             }
-        if (buckets.isNotEmpty()) return buckets.values.toList()
-        return migrateLegacy()
+        }
+        return buckets
     }
 
-    /**
-     * The flat, undated store this replaced.
-     *
-     * There is no month to file those plays under, so they go to a bucket no dated period matches:
-     * counting them as this month's listening would be a straight invention.
-     */
     private fun migrateLegacy(): List<Bucket> {
         val legacy = DesktopPreferenceChunks.read(preferences, KEY_ENTRIES).orEmpty()
             .lineSequence()
@@ -240,76 +278,41 @@ object DesktopListeningStats {
     }
 
     private fun write(buckets: List<Bucket>) {
-        val text = buildString {
-            buckets.forEach { bucket ->
-                bucket.tracks.values.forEach { entry ->
-                    append(encodeTrack(bucket.month, entry)).append('\n')
+        buckets.forEach { bucket ->
+            val stored = StoredBucket(
+                month = bucket.month,
+                tracks = bucket.tracks.values.map { entry ->
+                    TrackEntry(
+                        id = entry.song.videoId,
+                        title = entry.song.title,
+                        artist = entry.song.artist,
+                        album = entry.song.albumName,
+                        albumId = entry.song.albumId,
+                        artistId = entry.song.artistId,
+                        art = entry.song.thumbnailUrl,
+                        ms = entry.listenedMs,
+                        plays = entry.plays,
+                        last = System.currentTimeMillis()
+                    )
+                },
+                hours = bucket.hours.toList(),
+                days = bucket.days.mapKeys { (k, _) -> 
+                    // k is "YYYY-MM-DD", we want "DD" as Int
+                    runCatching { k.substringAfterLast("-").toInt() }.getOrDefault(1)
                 }
-                bucket.hours.forEachIndexed { hour, ms ->
-                    if (ms > 0L) append(encodeHour(bucket.month, hour, ms)).append('\n')
-                }
-                bucket.days.forEach { (day, ms) ->
-                    if (ms > 0L) append(encodeDay(bucket.month, day, ms)).append('\n')
-                }
-            }
-        }
-        DesktopPreferenceChunks.write(preferences, KEY_BUCKETS, text)
-    }
-
-    private fun decodeBucketLine(value: String): Pair<String, List<String>>? {
-        val fields = value.split('|').map(::decodeField)
-        val month = fields.getOrNull(0)?.takeIf(String::isNotBlank) ?: return null
-        return month to fields
-    }
-
-    private fun applyLine(bucket: Bucket, fields: List<String>) {
-        when (fields.getOrNull(1)) {
-            ROW_TRACK -> {
-                val id = fields.getOrNull(2)?.takeIf(String::isNotBlank) ?: return
-                bucket.tracks[id] = DesktopReplayEntry(
-                    song = Song(
-                        videoId = id,
-                        title = fields.getOrElse(3) { "" },
-                        artist = fields.getOrElse(4) { "" },
-                        thumbnailUrl = fields.getOrElse(5) { "" }.ifBlank { null },
-                        albumName = fields.getOrElse(6) { "" }.ifBlank { null },
-                        albumId = fields.getOrElse(7) { "" }.ifBlank { null },
-                        durationText = fields.getOrElse(8) { "" }.ifBlank { null },
-                    ),
-                    listenedMs = fields.getOrElse(9) { "" }.toLongOrNull()?.coerceAtLeast(0L) ?: 0L,
-                    plays = fields.getOrElse(10) { "" }.toIntOrNull()?.coerceAtLeast(0) ?: 0,
+            )
+            val file = File(directory, "${bucket.month}.json")
+            val tmp = File(directory, "${bucket.month}.json.tmp")
+            runCatching {
+                tmp.writeText(json.encodeToString(StoredBucket.serializer(), stored))
+                java.nio.file.Files.move(
+                    tmp.toPath(),
+                    file.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING
                 )
             }
-            ROW_HOUR -> {
-                val hour = fields.getOrNull(2)?.toIntOrNull()?.takeIf { it in 0..23 } ?: return
-                bucket.hours[hour] = fields.getOrNull(3)?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
-            }
-            ROW_DAY -> {
-                val day = fields.getOrNull(2)?.takeIf(String::isNotBlank) ?: return
-                bucket.days[day] = fields.getOrNull(3)?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
-            }
         }
     }
-
-    private fun encodeTrack(month: String, entry: DesktopReplayEntry) = listOf(
-        month,
-        ROW_TRACK,
-        entry.song.videoId,
-        entry.song.title,
-        entry.song.artist,
-        entry.song.thumbnailUrl.orEmpty(),
-        entry.song.albumName.orEmpty(),
-        entry.song.albumId.orEmpty(),
-        entry.song.durationText.orEmpty(),
-        entry.listenedMs.toString(),
-        entry.plays.toString(),
-    ).joinToString("|", transform = ::encodeField)
-
-    private fun encodeHour(month: String, hour: Int, ms: Long) =
-        listOf(month, ROW_HOUR, hour.toString(), ms.toString()).joinToString("|", transform = ::encodeField)
-
-    private fun encodeDay(month: String, day: String, ms: Long) =
-        listOf(month, ROW_DAY, day, ms.toString()).joinToString("|", transform = ::encodeField)
 
     private fun decodeLegacy(value: String): DesktopReplayEntry? {
         val fields = value.split('|').map(::decodeField)
@@ -329,9 +332,6 @@ object DesktopListeningStats {
         )
     }
 
-    private fun encodeField(value: String): String = Base64.getUrlEncoder().withoutPadding()
-        .encodeToString(value.toByteArray(StandardCharsets.UTF_8))
-
     private fun decodeField(value: String): String = runCatching {
         String(Base64.getUrlDecoder().decode(value), StandardCharsets.UTF_8)
     }.getOrDefault("")
@@ -339,9 +339,6 @@ object DesktopListeningStats {
     /** Plays carried over from the undated store; no dated period matches it. */
     internal const val LEGACY_MONTH = "0000-00"
 
-    private const val ROW_TRACK = "t"
-    private const val ROW_HOUR = "h"
-    private const val ROW_DAY = "d"
     private const val KEY_BUCKETS = "buckets"
     private const val KEY_ENTRIES = "entries"
 }

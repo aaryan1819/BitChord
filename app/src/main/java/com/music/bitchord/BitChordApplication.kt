@@ -127,6 +127,16 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory {
         // PlaybackService because the Replay page reads it from the UI side and
         // both live in this process — one owner, one directory.
         ListeningStats.init(this)
+        if (AppSettings.webdavUrl.value.isNotBlank()) {
+            CoroutineScope(Dispatchers.IO).launch {
+                com.music.bitchord.data.stats.StatsSyncManager.sync(
+                    localDirectory = java.io.File(filesDir, "listening"),
+                    webDavUrl = AppSettings.webdavUrl.value,
+                    username = AppSettings.webdavUsername.value,
+                    password = AppSettings.webdavPassword.value
+                )
+            }
+        }
         // After AppSettings, whose switch decides whether half of it runs.
         ArtistFacts.init(this)
         // One cache directory can only be opened once per process, and
